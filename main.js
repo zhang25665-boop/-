@@ -143,7 +143,131 @@ function blocked(x,z){
   return obstacles.some(([ox,oz,rx,rz])=>Math.abs(x-ox)<rx+player.radius&&Math.abs(z-oz)<rz+player.radius);
 }
 
-const clock=new THREE.Clock();
+
+// ===== PHASE 2: ZOMBIE AI =====
+
+const zombies = [];
+
+function createZombie(x, z) {
+  const zombie = new THREE.Group();
+
+  const skin = new THREE.MeshStandardMaterial({
+    color: 0x687b62,
+    roughness: 1
+  });
+
+  const clothes = new THREE.MeshStandardMaterial({
+    color: 0x343b39,
+    roughness: 1
+  });
+
+  function part(w, h, d, material, px, py, pz) {
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, d),
+      material
+    );
+    mesh.position.set(px, py, pz);
+    mesh.castShadow = true;
+    zombie.add(mesh);
+    return mesh;
+  }
+
+  // Body
+  part(0.65, 0.9, 0.35, clothes, 0, 1.25, 0);
+
+  // Head
+  part(0.4, 0.45, 0.4, skin, 0, 1.95, 0);
+
+  // Arms
+  part(0.18, 0.85, 0.2, skin, -0.43, 1.25, 0.12);
+  part(0.18, 0.85, 0.2, skin, 0.43, 1.25, 0.12);
+
+  // Legs
+  part(0.22, 0.75, 0.25, clothes, -0.17, 0.4, 0);
+  part(0.22, 0.75, 0.25, clothes, 0.17, 0.4, 0);
+
+  zombie.position.set(x, 0, z);
+  scene.add(zombie);
+
+  zombies.push({
+    mesh: zombie,
+    targetX: x,
+    targetZ: z,
+    state: "wander",
+    timer: 0
+  });
+}
+
+// Three zombies
+createZombie(-12, -35);
+createZombie(10, -48);
+createZombie(24, 32);
+
+function updateZombies(dt) {
+  for (const z of zombies) {
+    const dx = player.x - z.mesh.position.x;
+    const dz = player.z - z.mesh.position.z;
+    const distance = Math.hypot(dx, dz);
+
+    // Detection
+    if (distance < 18) {
+      z.state = "chase";
+    } else if (distance > 30) {
+      z.state = "wander";
+    }
+
+    let mx = 0;
+    let mz = 0;
+    let speed = 1.5;
+
+    if (z.state === "chase") {
+      speed = 3.0;
+
+      mx = dx / Math.max(distance, 0.001);
+      mz = dz / Math.max(distance, 0.001);
+
+    } else {
+      z.timer -= dt;
+
+      if (z.timer <= 0) {
+        const angle = Math.random() * Math.PI * 2;
+
+        z.targetX = z.mesh.position.x +
+          Math.cos(angle) * 8;
+
+        z.targetZ = z.mesh.position.z +
+          Math.sin(angle) * 8;
+
+        z.timer = 3 + Math.random() * 4;
+      }
+
+      const wx = z.targetX - z.mesh.position.x;
+      const wz = z.targetZ - z.mesh.position.z;
+      const len = Math.hypot(wx, wz);
+
+      if (len > 0.5) {
+        mx = wx / len;
+        mz = wz / len;
+      }
+    }
+
+    const nx = z.mesh.position.x + mx * speed * dt;
+    const nz = z.mesh.position.z + mz * speed * dt;
+
+    if (!blocked(nx, z.mesh.position.z)) {
+      z.mesh.position.x = nx;
+    }
+
+    if (!blocked(z.mesh.position.x, nz)) {
+      z.mesh.position.z = nz;
+    }
+
+    if (Math.abs(mx) + Math.abs(mz) > 0.01) {
+      z.mesh.rotation.y = Math.atan2(mx, mz);
+    }
+  }
+}
+
 function animate(){
   requestAnimationFrame(animate);
   const dt=Math.min(clock.getDelta(),.04);
@@ -165,7 +289,9 @@ function animate(){
     camera.position.x=player.x;camera.position.z=player.z;
     camera.rotation.order="YXZ";camera.rotation.y=yaw;camera.rotation.x=pitch;
   }
-  renderer.render(scene,camera);
+  
+  if (started) updateZombies(dt);
+renderer.render(scene,camera);
 }
 animate();
 
